@@ -1,6 +1,7 @@
 package com.example.emptyproject.pokemon.ui.listing
 
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -10,10 +11,12 @@ import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.example.emptyproject.databinding.FragmentPokemonListingBinding
 import com.example.emptyproject.pokemon.domain.Resource
 import com.example.emptyproject.pokemon.domain.model.Pokemon
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /*
@@ -27,7 +30,7 @@ class PokemonListFragment : Fragment() {
     private val binding get() = _binding
 
     private val viewModel: PokemonListingViewModel by viewModels()
-    private lateinit var adapter: PokemonAdapter
+    private lateinit var pokemonAdapter: PokemonAdapter
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -46,13 +49,15 @@ class PokemonListFragment : Fragment() {
                 when(it) {
                     is Resource.Success -> {
                         binding?.pbPokemonListing?.visibility = View.GONE
-                        if(it.data.isNullOrEmpty()) {
+                        if(it.data.isNullOrEmpty() && pokemonAdapter.differ.currentList.size == 0) {
+                            binding?.tvMessage?.visibility = View.VISIBLE
                             binding?.tvMessage?.text = "No Pokemon available"
                         } else {
-                            val newList = mutableListOf<Pokemon>()
-                            newList.addAll(adapter.differ.currentList)
-                            newList.addAll(it.data)
-                            adapter.differ.submitList(newList)
+                            if(!it.data.isNullOrEmpty()) {
+                                val newList = mutableListOf<Pokemon>()
+                                newList.addAll(pokemonAdapter.differ.currentList + it.data)
+                                pokemonAdapter.differ.submitList(newList)
+                            }
                         }
                     }
                     is Resource.Loading -> {
@@ -68,12 +73,27 @@ class PokemonListFragment : Fragment() {
     }
 
     private fun setupRv() {
-        adapter = PokemonAdapter()
+        pokemonAdapter = PokemonAdapter()
         binding?.rvPokemon?.apply {
-            adapter = this@PokemonListFragment.adapter
+            adapter = pokemonAdapter
             layoutManager = GridLayoutManager(context, 2)
+            addOnScrollListener(object : RecyclerView.OnScrollListener() {
+
+                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                    super.onScrolled(recyclerView, dx, dy)
+                    layoutManager?.apply {
+                        val firstVisibleItemPosition = (this as? GridLayoutManager)?.findFirstVisibleItemPosition()
+                        firstVisibleItemPosition?.let {
+                            val isAtLastItem = firstVisibleItemPosition + childCount >= itemCount
+                            if(isAtLastItem) {
+                                viewModel.getListing()
+                            }
+                        }
+                    }
+                }
+            })
         }
-        adapter.setOnItemClickListener { pokemon, position ->
+        pokemonAdapter.setOnItemClickListener { pokemon, position ->
             val action = PokemonListFragmentDirections.actionListFragToDetailFrag(
                 Pokemon(id = 1, "poki", "vs"),
                 pokemon.id ?: 0
